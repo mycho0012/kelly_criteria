@@ -6,7 +6,12 @@ import matplotlib.pyplot as plt
 from datetime import date
 
 def simulate_final_value(returns, f):
+    """
+    일별 수익률(returns)에 대해, 매일 자본의 'f' 비중을 베팅한다고 가정하고
+    최종 자본을 구한다. 파산(자본<=0) 시 즉시 0으로 반환.
+    """
     capital = 1.0
+    
     # Ensure array of float64
     if isinstance(returns, pd.Series):
         returns = returns.to_numpy(dtype=np.float64)
@@ -15,7 +20,7 @@ def simulate_final_value(returns, f):
     
     try:
         for r in returns:
-            capital *= (1 + f*r)
+            capital *= (1 + f * r)
             if capital <= 0:
                 return 0.0
         return capital
@@ -24,6 +29,10 @@ def simulate_final_value(returns, f):
         return 0.0
 
 def annualized_growth_ratio(final_capital, days):
+    """
+    최종 자본(final_capital)에서 연평균 성장률(기하평균)을 추정.
+    (final_capital^(252/days)) - 1
+    """
     if final_capital <= 0:
         return -1.0
     try:
@@ -35,13 +44,18 @@ def annualized_growth_ratio(final_capital, days):
         return -1.0
 
 def kelly_sweep(returns, f_min=-0.1, f_max=0.5, steps=61):
+    """
+    f_min ~ f_max 범위를 steps만큼 등분하여,
+    각 f값에 대해 최종자본 -> 연평균 성장률(기하평균)을 계산.
+    """
     try:
+        # Convert to float64 array
         if isinstance(returns, pd.Series):
             returns = returns.to_numpy(dtype=np.float64)
         elif isinstance(returns, (list, tuple)):
             returns = np.array(returns, dtype=np.float64)
         
-        # OPTIONAL: remove infinite or NaN
+        # Remove infinities or NaN
         returns = returns[np.isfinite(returns)]
         
         f_values = np.linspace(f_min, f_max, steps)
@@ -52,27 +66,32 @@ def kelly_sweep(returns, f_min=-0.1, f_max=0.5, steps=61):
             final_cap = simulate_final_value(returns, float(f))
             growth = annualized_growth_ratio(final_cap, n_days)
             results.append((float(f), growth))
+        
         return results
     
     except Exception as e:
         st.error(f"Kelly sweep 계산 중 오류 발생: {str(e)}")
-        # Return a fallback so the code won't crash outside
+        # Return fallback
         return [(0.0, -1.0)]
 
 def main():
     st.title("Kelly Criterion Sweep Simulation")
 
     st.sidebar.header("Simulation Settings")
-    ticker = st.sidebar.text_input("종목 티커(예: 005930.KS)", value="005930.KS")
-    start_date_input = st.sidebar.date_input("시작 날짜", value=date(2018,1,1))
-    end_date_input = st.sidebar.date_input("끝 날짜", value=date.today())
+    ticker = st.sidebar.text_input("종목 티커(예: 005930.KS (삼성전자))", value="005930.KS")
+    start_date_val = st.sidebar.date_input("시작 날짜", value=date(2018,1,1))
+    end_date_val = st.sidebar.date_input("끝 날짜", value=date.today())
     
     st.sidebar.write("---")
     f_min = st.sidebar.slider("f_min (최소 베팅 비율)", 
-                              min_value=-0.5, max_value=0.0, value=-0.1, step=0.01)
+                              min_value=-0.5, max_value=0.0, 
+                              value=-0.1, step=0.01)
     f_max = st.sidebar.slider("f_max (최대 베팅 비율)", 
-                              min_value=0.0, max_value=2.0, value=0.5, step=0.01)
-    steps = st.sidebar.slider("단계 수 (steps)", min_value=10, max_value=200, value=61, step=1)
+                              min_value=0.0, max_value=2.0, 
+                              value=0.5, step=0.01)
+    steps = st.sidebar.slider("단계 수 (steps)", 
+                              min_value=10, max_value=200, 
+                              value=61, step=1)
     
     # Ticker Info
     try:
@@ -83,14 +102,14 @@ def main():
         company_name = "Unknown Company"
     
     st.write(f"**티커**: {ticker} ({company_name}), "
-             f"**기간**: {start_date_input} ~ {end_date_input}")
+             f"**기간**: {start_date_val} ~ {end_date_val}")
 
-    # 1) 데이터 불러오기
+    # 1) Download Data
     try:
         df = yf.download(
             ticker, 
-            start=str(start_date_input), 
-            end=str(end_date_input), 
+            start=str(start_date_val), 
+            end=str(end_date_val), 
             progress=False
         )
         if df.empty:
@@ -100,13 +119,13 @@ def main():
         st.error(f"데이터를 불러오는 중 오류 발생: {e}")
         return
     
-    # Drop any rows with NaN
+    # Drop NaN
     df = df.dropna(how='any')
     if df.empty:
         st.error("유효한 행이 없는 데이터프레임입니다.")
         return
     
-    # 2) 적절한 가격 열 추출
+    # 2) Price Selection
     if 'Adj Close' in df.columns:
         price_data = df['Adj Close']
     elif 'Close' in df.columns:
@@ -114,32 +133,44 @@ def main():
     else:
         st.error("No 'Adj Close' or 'Close' column found in data.")
         return
-
-    # Some yfinance data might return multi-dimensional columns (unlikely here, but possible)
-    # Use .squeeze() to ensure we get a Series if it was (rows,1) shape
+    
+    # Make sure it's a Series, remove multi-dim
     price_data = price_data.squeeze()
 
-    # Double-check dimensionality
-    if price_data.ndim != 1:
-        st.error(f"가격 데이터가 1차원이 아닙니다 (shape={price_data.shape}).")
-        return
+    # Ensure index is datetime and sorted
+    price_data.index = pd.to_datetime(price_data.index, errors='coerce')
+    price_data.sort_index(inplace=True)
+    
+    # Remove time zone if present
+    if price_data.index.tz is not None:
+        price_data.index = price_data.index.tz_localize(None)
 
-    # Convert to numeric and drop NaN
+    # Convert to numeric
     price_data = pd.to_numeric(price_data, errors='coerce').dropna()
     if price_data.empty:
         st.error("유효한 숫자형 가격 데이터가 없습니다.")
         return
-    
-    st.write(f"가져온 데이터 개수: {len(price_data)}")
-    st.line_chart(price_data, height=200, use_container_width=True)
 
-    # 3) 수익률 계산
+    st.write(f"가져온 데이터 개수: {len(price_data)}")
+    
+    # Quick debugging info (optional)
+    st.write("First 5 Rows:")
+    st.write(price_data.head())
+    st.write("Index dtype:", price_data.index.dtype)
+    
+    # Plot with line_chart
+    if len(price_data) < 2:
+        st.warning("Chart cannot be displayed because there are fewer than 2 data points.")
+    else:
+        st.line_chart(price_data, height=300, use_container_width=True)
+
+    # 3) Returns
     returns = price_data.pct_change().dropna()
     if len(returns) < 2:
         st.warning("수익률 계산 가능한 데이터가 부족합니다.")
         return
 
-    # 4) 켈리 스윕
+    # 4) Kelly Sweep
     sweep_result = kelly_sweep(returns, f_min=f_min, f_max=f_max, steps=steps)
     if not sweep_result:
         st.error("켈리 스윕 결과가 비어있습니다.")
@@ -160,7 +191,7 @@ def main():
         st.write(f"**최적 Kelly 비율**: {best_f:.2%}, "
                  f"**연평균성장률**: {best_growth:.2f}%")
 
-    # 5) 성장률 곡선 시각화
+    # 5) Plot Sweep with Matplotlib
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(8,5))
     ax.plot([fv*100 for fv in f_vals], [gv*100 for gv in growth_vals],
