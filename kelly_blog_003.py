@@ -80,7 +80,12 @@ def main():
 
     # === Download Historical Data ===
     try:
-        df = yf.download(ticker, start=str(start_date_val), end=str(end_date_val), progress=False)
+        df = yf.download(
+            ticker, 
+            start=str(start_date_val), 
+            end=str(end_date_val), 
+            progress=False
+        )
         if df.empty:
             st.error("해당 기간에 유효한 데이터가 없습니다. 날짜/티커를 다시 확인해주세요.")
             return
@@ -120,10 +125,21 @@ def main():
         st.error("유효한 숫자형 가격 데이터가 없습니다.")
         return
     
-    # === Show Basic Info & Plot Chart ===
+    # === Show Basic Info & Plot with Matplotlib instead of st.line_chart ===
     st.write(f"가져온 데이터 개수: {len(price_data)}")
-   
-    st.line_chart(price_data, height=200, use_container_width=True)
+    if len(price_data) < 2:
+        st.warning("차트를 표시할 데이터가 2개 미만입니다.")
+    else:
+        plt.style.use('default')
+        fig_price, ax_price = plt.subplots(figsize=(8,4))
+        ax_price.plot(price_data.index, price_data.values, label='Historical Price')
+        ax_price.set_xlabel("Date")
+        ax_price.set_ylabel("Price")
+        ax_price.set_title(f"Historical Price: {ticker}")
+        ax_price.grid(True)
+        ax_price.legend()
+        st.pyplot(fig_price)
+        plt.close(fig_price)
 
     # === Calculate Returns ===
     returns = price_data.pct_change().dropna()
