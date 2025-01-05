@@ -104,12 +104,24 @@ def main():
         st.error(f"데이터를 불러오는 중 오류 발생: {e}")
         return
     
-    # 조정종가만 사용
+    # 조정종가만 사용하고 숫자형으로 변환
     df = df.dropna()
-    if 'Adj Close' in df.columns:
-        price = df['Adj Close']
-    else:
-        price = df['Close']
+    try:
+        if 'Adj Close' in df.columns:
+            price = pd.to_numeric(df['Adj Close'], errors='coerce')
+        else:
+            price = pd.to_numeric(df['Close'], errors='coerce')
+        
+        # NA 값 제거
+        price = price.dropna()
+        
+        if len(price) == 0:
+            st.error("유효한 가격 데이터가 없습니다.")
+            return
+            
+    except Exception as e:
+        st.error(f"가격 데이터 변환 중 오류 발생: {e}")
+        return
     
     # 가격이 유효한지 확인
     if not pd.api.types.is_numeric_dtype(price):
