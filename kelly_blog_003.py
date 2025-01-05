@@ -95,10 +95,10 @@ def main():
     # 조정종가만 사용
     df = df.dropna()
     if 'Adj Close' in df.columns:
-        price = df['Adj Close']
+        price = df['Adj Close'].astype(float)
     else:
         # yfinance 반환 형태가 다를 경우 대비
-        price = df['Close']
+        price = df['Close'].astype(float)
 
     st.write(f"가져온 데이터 개수: {len(price)}")
     st.line_chart(price, height=200, use_container_width=True)
@@ -107,6 +107,11 @@ def main():
     returns = price.pct_change().dropna()
     if len(returns) < 2:
         st.warning("수익률 계산 가능한 데이터가 부족합니다.")
+        return
+
+    # 수익률이 숫자인지 확인
+    if not np.issubdtype(returns.dtype, np.number):
+        st.error("수익률 계산 중 오류가 발생했습니다.")
         return
 
     # 3) 켈리 스윕
