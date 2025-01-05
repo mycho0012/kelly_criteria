@@ -13,6 +13,10 @@ def simulate_final_value(returns, f):
     파산(자본<=0) 시 즉시 0으로 반환.
     """
     capital = 1.0
+    # Convert returns to numpy array if it's a pandas Series
+    if isinstance(returns, pd.Series):
+        returns = returns.values
+    
     for r in returns:
         capital *= (1 + f*r)
         if capital <= 0:
@@ -35,6 +39,10 @@ def kelly_sweep(returns, f_min=-0.1, f_max=0.5, steps=61):
     f_min ~ f_max 범위를 steps만큼 등분해,
     각 f값에 대해 최종자본 -> 연평균 성장률을 계산.
     """
+    # Convert returns to numpy array if it's a pandas Series
+    if isinstance(returns, pd.Series):
+        returns = returns.values
+        
     f_values = np.linspace(f_min, f_max, steps)
     n_days = len(returns)
     
