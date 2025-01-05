@@ -19,11 +19,15 @@ def simulate_final_value(returns, f):
     elif isinstance(returns, (list, tuple)):
         returns = np.array(returns, dtype=np.float64)
     
-    for r in returns:
-        capital *= (1 + f*float(r))
-        if capital <= 0:
-            return 0.0
-    return capital
+    try:
+        for r in returns:
+            capital *= (1 + f * r)  # float() 제거 - 이미 numpy array로 변환됨
+            if capital <= 0:
+                return 0.0
+        return capital
+    except Exception as e:
+        st.error(f"수익률 계산 중 오류 발생: {str(e)}")
+        return 0.0
 
 def annualized_growth_ratio(final_capital, days):
     """
@@ -32,31 +36,39 @@ def annualized_growth_ratio(final_capital, days):
     """
     if final_capital <= 0:
         return -1.0  # 파산이면 -100%로 보정
-    annual_factor = 252 / days
-    growth = (final_capital ** annual_factor) - 1
-    return growth
+    try:
+        annual_factor = 252 / max(days, 1)  # 0으로 나누기 방지
+        growth = (final_capital ** annual_factor) - 1
+        return growth
+    except Exception as e:
+        st.error(f"연간 성장률 계산 중 오류 발생: {str(e)}")
+        return -1.0
 
 def kelly_sweep(returns, f_min=-0.1, f_max=0.5, steps=61):
     """
     f_min ~ f_max 범위를 steps만큼 등분해,
     각 f값에 대해 최종자본 -> 연평균 성장률을 계산.
     """
-    # Convert returns to numpy array if it's a pandas Series
-    if isinstance(returns, pd.Series):
-        returns = returns.to_numpy(dtype=np.float64)
-    elif isinstance(returns, (list, tuple)):
-        returns = np.array(returns, dtype=np.float64)
+    try:
+        # Convert returns to numpy array if it's a pandas Series
+        if isinstance(returns, pd.Series):
+            returns = returns.to_numpy(dtype=np.float64)
+        elif isinstance(returns, (list, tuple)):
+            returns = np.array(returns, dtype=np.float64)
+            
+        f_values = np.linspace(f_min, f_max, steps)
+        n_days = len(returns)
         
-    f_values = np.linspace(f_min, f_max, steps)
-    n_days = len(returns)
-    
-    results = []
-    for f in f_values:
-        final_cap = simulate_final_value(returns, float(f))
-        growth = annualized_growth_ratio(final_cap, n_days)  # 기하평균
-        results.append((float(f), growth))
-    
-    return results
+        results = []
+        for f in f_values:
+            final_cap = simulate_final_value(returns, float(f))
+            growth = annualized_growth_ratio(final_cap, n_days)
+            results.append((float(f), growth))
+        
+        return results
+    except Exception as e:
+        st.error(f"Kelly sweep 계산 중 오류 발생: {str(e)}")
+        return [(0.0, -1.0)]
 
 def main():
     st.title("Kelly Criterion Sweep Simulation")
@@ -95,10 +107,14 @@ def main():
     # 조정종가만 사용
     df = df.dropna()
     if 'Adj Close' in df.columns:
-        price = df['Adj Close'].astype(float)
+        price = df['Adj Close']
     else:
-        # yfinance 반환 형태가 다를 경우 대비
-        price = df['Close'].astype(float)
+        price = df['Close']
+    
+    # 가격이 유효한지 확인
+    if not pd.api.types.is_numeric_dtype(price):
+        st.error("가격 데이터가 숫자 형식이 아닙니다.")
+        return
 
     st.write(f"가져온 데이터 개수: {len(price)}")
     st.line_chart(price, height=200, use_container_width=True)
@@ -110,7 +126,7 @@ def main():
         return
 
     # 수익률이 숫자인지 확인
-    if not np.issubdtype(returns.dtype, np.number):
+    if not pd.api.types.is_numeric_dtype(returns):
         st.error("수익률 계산 중 오류가 발생했습니다.")
         return
 
@@ -132,6 +148,7 @@ def main():
         st.write(f"**최적 Kelly 비율**: {best_f:.2%}, **연평균성장률**: {best_growth:.2f}%")
 
     # 그래프 그리기 (matplotlib -> st.pyplot)
+    plt.style.use('default')  # seaborn 스타일 제거
     fig, ax = plt.subplots(figsize=(8,5))
     ax.plot([f*100 for f in f_vals], [g*100 for g in growth_vals], label='Annual Growth Rate')
     ax.axvline(best_f*100, color='red', linestyle='--', label=f'Best f={best_f*100:.1f}%')
@@ -144,6 +161,7 @@ def main():
     ax.legend()
 
     st.pyplot(fig)
+    plt.close(fig)  # 메모리 해제
 
 if __name__ == "__main__":
     main()
