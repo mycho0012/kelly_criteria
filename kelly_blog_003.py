@@ -122,10 +122,8 @@ def main():
     
     # === Show Basic Info & Plot Chart ===
     st.write(f"가져온 데이터 개수: {len(price_data)}")
-    if len(price_data) < 2:
-        st.warning("차트를 표시할 데이터가 2개 미만입니다.")
-    else:
-        st.line_chart(price_data, height=200, use_container_width=True)
+   
+    st.line_chart(price_data, height=200, use_container_width=True)
 
     # === Calculate Returns ===
     returns = price_data.pct_change().dropna()
