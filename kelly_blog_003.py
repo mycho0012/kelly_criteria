@@ -15,10 +15,12 @@ def simulate_final_value(returns, f):
     capital = 1.0
     # Convert returns to numpy array if it's a pandas Series
     if isinstance(returns, pd.Series):
-        returns = returns.values
+        returns = returns.to_numpy(dtype=np.float64)
+    elif isinstance(returns, (list, tuple)):
+        returns = np.array(returns, dtype=np.float64)
     
     for r in returns:
-        capital *= (1 + f*r)
+        capital *= (1 + f*float(r))
         if capital <= 0:
             return 0.0
     return capital
@@ -41,16 +43,18 @@ def kelly_sweep(returns, f_min=-0.1, f_max=0.5, steps=61):
     """
     # Convert returns to numpy array if it's a pandas Series
     if isinstance(returns, pd.Series):
-        returns = returns.values
+        returns = returns.to_numpy(dtype=np.float64)
+    elif isinstance(returns, (list, tuple)):
+        returns = np.array(returns, dtype=np.float64)
         
     f_values = np.linspace(f_min, f_max, steps)
     n_days = len(returns)
     
     results = []
     for f in f_values:
-        final_cap = simulate_final_value(returns, f)
+        final_cap = simulate_final_value(returns, float(f))
         growth = annualized_growth_ratio(final_cap, n_days)  # 기하평균
-        results.append((f, growth))
+        results.append((float(f), growth))
     
     return results
 
